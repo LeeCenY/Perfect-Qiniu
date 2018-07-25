@@ -91,6 +91,6 @@ public class Qiniu {
 
 public extension String {
     func urlSafeBase64() -> String {
-        return self.replacingOccurrences(of: "+", with: "_").self.replacingOccurrences(of: "/", with: "_")
+        return self.replacingOccurrences(of: "+", with: "-").self.replacingOccurrences(of: "/", with: "_")
     }
 }
