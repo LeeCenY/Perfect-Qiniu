@@ -44,7 +44,12 @@ public class Qiniu {
         let deadline: Int
     }
     
-    func getToken(config: QiniuConfiguration) throws -> String? {
+    public enum UploadError: Error {
+        case badToken
+        case RequestfFailed(String)
+    }
+    
+    func getToken(config: QiniuConfiguration) throws -> String {
         
         let deadline = Date().timeIntervalSince1970 + 36500
         let putPolicy = PutPolicy.init(scope: config.scope, deadline: Int(deadline))
@@ -55,7 +60,7 @@ public class Qiniu {
         guard let encodeData = base64String.sign(Digest.sha1, key: HMACKey.init(config.secretKey)),
             let encodeBase64 = encodeData.encode(.base64),
             let encodeString = String.init(validatingUTF8: encodeBase64) else {
-                return nil
+                throw UploadError.badToken
         }
         
         let encodedSignString = encodeString.urlSafeBase64()
@@ -64,9 +69,7 @@ public class Qiniu {
     
    public static func upload(fileName: String = "?", file: String, config: QiniuConfiguration) throws -> [String:Any] {
         
-        guard let token = try Qiniu().getToken(config: config) else {
-            return ["error": "bad token"]
-        }
+        let token = try Qiniu().getToken(config: config)
         
         let fields = CURL.POSTFields()
         let _ = fields.append(key: "token", value: token)
@@ -77,7 +80,7 @@ public class Qiniu {
         let ret = curl.formAddPost(fields: fields)
         defer { curl.close() }
         guard ret.rawValue == 0 else {
-            return ["error": curl.strError(code: ret)]
+            throw UploadError.RequestfFailed(curl.strError(code: ret))
         }
         let _ = curl.setOption(CURLOPT_VERBOSE, int: config.DEBUG ? 1 : 0 )
         let r = curl.performFullySync()
@@ -85,12 +88,15 @@ public class Qiniu {
         var ptr = r.bodyBytes
         ptr.append(0)
         let s = String(cString: ptr)
+        guard r.resultCode == 0, r.responseCode == 200 else {
+            throw UploadError.RequestfFailed(s)
+        }
         return try s.jsonDecode() as? [String:Any] ?? [:]
     }
 }
 
 public extension String {
     func urlSafeBase64() -> String {
-        return self.replacingOccurrences(of: "+", with: "-").self.replacingOccurrences(of: "/", with: "_")
+        return self.replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
     }
 }
